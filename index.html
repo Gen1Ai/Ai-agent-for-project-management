@@ -1,0 +1,1358 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Agent for Project Management — n8n Workflow Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            surface: {
+              950: '#09090b',
+              900: '#0f1015',
+              850: '#14161d',
+              800: '#1b1e28',
+              700: '#262a38',
+            },
+            n8n: {
+              coral: '#ff6d5a',
+              purple: '#8b5cf6',
+              emerald: '#10b981',
+              amber: '#f59e0b',
+              sky: '#0ea5e9',
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      background-color: #09090b;
+      color: #f4f4f5;
+      font-family: 'Inter', sans-serif;
+    }
+
+    /* Custom subtle grid canvas background like n8n */
+    .n8n-canvas {
+      background-color: #0d0e12;
+      background-image: radial-gradient(#27272a 1px, transparent 1px);
+      background-size: 20px 20px;
+    }
+
+    /* Node state animations */
+    @keyframes pulseBorder {
+      0%, 100% {
+        box-shadow: 0 0 0 0 rgba(255, 109, 90, 0.45), 0 0 20px rgba(255, 109, 90, 0.25);
+      }
+      50% {
+        box-shadow: 0 0 0 4px rgba(255, 109, 90, 0.15), 0 0 28px rgba(255, 109, 90, 0.4);
+      }
+    }
+
+    .node-running {
+      border-color: #ff6d5a !important;
+      animation: pulseBorder 1.5s infinite ease-in-out;
+    }
+
+    .node-success {
+      border-color: #10b981 !important;
+      box-shadow: 0 0 18px rgba(16, 185, 129, 0.16);
+    }
+
+    .node-error {
+      border-color: #ef4444 !important;
+      box-shadow: 0 0 18px rgba(239, 68, 68, 0.2);
+    }
+
+    /* Flowing dashed connector animation */
+    @keyframes dashFlow {
+      to {
+        stroke-dashoffset: -24;
+      }
+    }
+
+    .connector-active {
+      stroke: #ff6d5a;
+      stroke-dasharray: 6 6;
+      animation: dashFlow 0.7s linear infinite;
+    }
+
+    .connector-done {
+      stroke: #10b981;
+      transition: stroke 0.3s ease;
+    }
+
+    /* Smooth scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f1015;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #27272a;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #3f3f46;
+    }
+
+    /* Fade slide in for generated cards */
+    @keyframes fadeSlideUp {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .animate-artifact {
+      animation: fadeSlideUp 0.35s ease-out forwards;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-n8n-coral/30 selection:text-white">
+
+  <!-- Top Navigation & Control Bar -->
+  <header class="sticky top-0 z-30 border-b border-zinc-800/80 bg-surface-950/90 backdrop-blur-md">
+    <div class="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-4">
+      <!-- Brand / Workflow Title -->
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-[#ff6d5a] to-[#ff477e] flex items-center justify-center shadow-lg shadow-[#ff6d5a]/20 shrink-0">
+          <!-- Workflow Icon SVG -->
+          <svg class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="6" height="6" rx="1.5"/>
+            <rect x="15" y="3" width="6" height="6" rx="1.5"/>
+            <rect x="9" y="15" width="6" height="6" rx="1.5"/>
+            <path d="M6 9v3a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V9"/>
+            <path d="M12 14v1"/>
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-sm sm:text-base font-semibold tracking-tight text-white">AI Agent for Project Management — Interactive Workflow Demo</h1>
+            <span class="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-zinc-800 text-zinc-300 border border-zinc-700/80">
+              n8n + GPT-4o-mini
+            </span>
+          </div>
+          <p class="text-xs text-zinc-400">Turns Fireflies.ai transcripts into Airtable tasks, Gmail client summaries &amp; Google Calendar follow-ups</p>
+        </div>
+      </div>
+
+      <!-- Mode Switcher & Action Controls -->
+      <div class="flex flex-wrap items-center gap-2 sm:gap-2.5">
+        <!-- View Workflow JSON / cURL Modal Trigger -->
+        <button type="button" onclick="openWorkflowModal()" class="px-3 py-2 rounded-xl text-xs font-medium text-zinc-300 bg-surface-850 hover:bg-surface-800 border border-zinc-800 hover:border-zinc-700 transition-all flex items-center gap-1.5" title="Inspect n8n JSON & cURL snippet">
+          <svg class="w-3.5 h-3.5 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="16 18 22 12 16 6"></polyline>
+            <polyline points="8 6 2 12 8 18"></polyline>
+          </svg>
+          <span>Workflow JSON</span>
+        </button>
+
+        <!-- Mode Toggle Pill -->
+        <div class="inline-flex p-1 rounded-xl bg-surface-850 border border-zinc-800" role="tablist" aria-label="Execution Mode">
+          <button id="btn-mode-sim" onclick="setMode('simulation')" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 bg-zinc-800 text-white shadow-sm">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            Simulation Mode
+          </button>
+          <button id="btn-mode-live" onclick="setMode('live')" class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200">
+            <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+            Live n8n Webhook
+          </button>
+        </div>
+
+        <!-- Reset Button -->
+        <button id="btn-reset" onclick="resetDemo()" class="px-3 py-2 rounded-xl text-xs font-medium text-zinc-300 bg-surface-850 hover:bg-surface-800 border border-zinc-800 hover:border-zinc-700 transition-all flex items-center gap-1.5" title="Clear outputs and reset workflow nodes">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+          </svg>
+          <span>Reset</span>
+        </button>
+
+        <!-- Primary Run Button -->
+        <button id="btn-run" onclick="handleRunWorkflow()" class="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-gradient-to-r from-[#ff6d5a] to-[#f43f5e] hover:brightness-110 active:scale-[0.99] transition-all shadow-lg shadow-[#ff6d5a]/25 flex items-center gap-2">
+          <svg id="run-icon" class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+            <polygon points="5 3 19 12 5 21 5 3"></polygon>
+          </svg>
+          <span id="run-label">Run Demo Workflow</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Toast / Notification Banner (Non-blocking replacement for alert) -->
+  <div id="toast-banner" class="hidden fixed bottom-5 right-5 z-50 max-w-md px-4 py-3 rounded-xl bg-surface-800 border border-zinc-700 shadow-2xl flex items-center gap-3 text-xs text-zinc-100 animate-artifact">
+    <span id="toast-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0"></span>
+    <span id="toast-message" class="leading-relaxed">Notification</span>
+  </div>
+
+  <!-- Workflow JSON & Webhook cURL Modal -->
+  <div id="workflow-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-surface-900 border border-zinc-800 rounded-2xl max-w-2xl w-full overflow-hidden shadow-2xl animate-artifact">
+      <div class="px-5 py-3.5 border-b border-zinc-800 flex items-center justify-between bg-surface-850">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-[#ff6d5a]"></span>
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-white">n8n Workflow Blueprint &amp; Webhook Trigger</h3>
+        </div>
+        <button type="button" onclick="closeWorkflowModal()" class="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors" aria-label="Close modal">
+          <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+        <!-- Sample cURL Command -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-xs font-medium text-zinc-300">Sample Webhook POST Request (<code class="text-zinc-400">curl</code>)</span>
+            <button type="button" onclick="copyTextById('modal-curl-code', 'cURL command copied to clipboard!')" class="text-[11px] text-sky-400 hover:text-sky-300 font-medium">Copy cURL</button>
+          </div>
+          <pre id="modal-curl-code" class="p-3 rounded-xl bg-surface-950 border border-zinc-800 text-[11px] font-mono text-sky-300 overflow-x-auto leading-relaxed">curl -X POST https://your-n8n-instance.com/webhook/meeting-processed \
+  -H "Content-Type: application/json" \
+  -d '{"meetingId": "ff_transcript_98a72b1c"}'</pre>
+        </div>
+
+        <!-- Sanitized n8n Workflow JSON -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-xs font-medium text-zinc-300">Sanitized n8n Workflow JSON (<code class="text-zinc-400">meeting-ai-project-manager.json</code>)</span>
+            <button type="button" onclick="copyTextById('modal-workflow-json', 'Sanitized n8n workflow JSON copied!')" class="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium">Copy JSON</button>
+          </div>
+          <pre id="modal-workflow-json" class="p-3 rounded-xl bg-surface-950 border border-zinc-800 text-[11px] font-mono text-zinc-300 overflow-x-auto max-h-64 leading-relaxed"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main 3-Column Responsive Workspace -->
+  <main class="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 py-5 grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+
+    <!-- LEFT PANEL: Incoming Meeting Payload / Live Webhook Config (4 cols) -->
+    <section class="lg:col-span-4 bg-surface-900 border border-zinc-800/90 rounded-2xl overflow-hidden flex flex-col shadow-xl">
+      <div class="px-4 py-3.5 border-b border-zinc-800/80 flex items-center justify-between bg-surface-850/60">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-sky-400"></span>
+          <h2 id="left-panel-title" class="text-xs font-semibold uppercase tracking-wider text-zinc-200">1. Incoming Meeting Payload</h2>
+        </div>
+        <span id="left-panel-badge" class="text-[11px] font-mono text-zinc-400 bg-zinc-800/80 px-2 py-0.5 rounded-md">Fireflies GraphQL</span>
+      </div>
+
+      <!-- SIMULATION INPUT VIEW -->
+      <div id="sim-input-container" class="p-4 space-y-4">
+        <!-- Sample Preset Selector -->
+        <div>
+          <label class="block text-xs font-medium text-zinc-400 mb-1.5">Load Sample Meeting Scenario</label>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <button type="button" onclick="loadPreset('website')" id="preset-btn-website" class="preset-btn text-left p-2.5 rounded-xl border border-[#ff6d5a]/60 bg-[#ff6d5a]/10 transition-all">
+              <div class="text-xs font-semibold text-white leading-snug">Q4 Website Redesign</div>
+              <div class="text-[10px] text-zinc-400 mt-0.5">3 tasks + follow-up</div>
+            </button>
+            <button type="button" onclick="loadPreset('mobile')" id="preset-btn-mobile" class="preset-btn text-left p-2.5 rounded-xl border border-zinc-800 bg-surface-850 hover:border-zinc-700 transition-all">
+              <div class="text-xs font-semibold text-zinc-200 leading-snug">Mobile Sprint Sync</div>
+              <div class="text-[10px] text-zinc-400 mt-0.5">2 tasks, no follow-up</div>
+            </button>
+            <button type="button" onclick="loadPreset('onboarding')" id="preset-btn-onboarding" class="preset-btn text-left p-2.5 rounded-xl border border-zinc-800 bg-surface-850 hover:border-zinc-700 transition-all">
+              <div class="text-xs font-semibold text-zinc-200 leading-snug">Client Onboarding</div>
+              <div class="text-[10px] text-zinc-400 mt-0.5">Auto +7d due date</div>
+            </button>
+          </div>
+        </div>
+
+        <!-- Structured Quick Editor -->
+        <div class="space-y-3 pt-1 border-t border-zinc-800/70">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div>
+              <label class="block text-[11px] font-medium text-zinc-400 mb-1">Meeting Title</label>
+              <input id="input-title" type="text" oninput="syncFormToJson()" class="w-full px-3 py-1.5 rounded-lg bg-surface-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
+            </div>
+            <div>
+              <label class="block text-[11px] font-medium text-zinc-400 mb-1">Client Email</label>
+              <input id="input-client-email" type="email" oninput="syncFormToJson()" class="w-full px-3 py-1.5 rounded-lg bg-surface-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-medium text-zinc-400 mb-1">Meeting Summary &amp; Follow-up Context</label>
+            <textarea id="input-overview" rows="2" oninput="syncFormToJson()" class="w-full px-3 py-1.5 rounded-lg bg-surface-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600 leading-relaxed"></textarea>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="block text-[11px] font-medium text-zinc-400">Action Items (one per line)</label>
+              <span class="text-[10px] text-zinc-500">Parsed into Airtable tasks</span>
+            </div>
+            <textarea id="input-actions" rows="3" oninput="syncFormToJson()" class="w-full px-3 py-1.5 rounded-lg bg-surface-950 border border-zinc-800 text-xs text-zinc-100 focus:outline-none focus:border-zinc-600 leading-relaxed font-mono"></textarea>
+          </div>
+        </div>
+
+        <!-- Raw JSON Preview -->
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[11px] font-medium text-zinc-400">Transcript JSON Payload (<code class="text-zinc-300">$json.data.transcript</code>)</span>
+            <button type="button" onclick="copyPayloadJson()" class="text-[11px] text-zinc-400 hover:text-white flex items-center gap-1 transition-colors">
+              <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              Copy JSON
+            </button>
+          </div>
+          <pre id="raw-json-preview" class="p-3 rounded-xl bg-surface-950 border border-zinc-800/90 text-[11px] font-mono text-emerald-300/90 overflow-x-auto max-h-48 leading-relaxed"></pre>
+        </div>
+      </div>
+
+      <!-- LIVE WEBHOOK INPUT VIEW (Hidden by default) -->
+      <div id="live-input-container" class="hidden p-4 space-y-4">
+        <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200/90 leading-relaxed">
+          <strong class="font-semibold text-amber-300">Live n8n Trigger Mode:</strong> Sends a real <code class="px-1 py-0.5 rounded bg-black/40 font-mono">POST</code> request to your n8n webhook URL with <code class="px-1 py-0.5 rounded bg-black/40 font-mono">{"meetingId": "..."}</code>. Make sure your n8n workflow is active or listening for test events.
+        </div>
+
+        <div>
+          <label for="live-webhook-url" class="block text-xs font-medium text-zinc-300 mb-1.5">n8n Webhook URL</label>
+          <input id="live-webhook-url" type="url" placeholder="https://your-n8n-instance.com/webhook-test/meeting-processed" class="w-full px-3 py-2 rounded-xl bg-surface-950 border border-zinc-700 text-xs font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-[#ff6d5a]" />
+        </div>
+
+        <div>
+          <label for="live-meeting-id" class="block text-xs font-medium text-zinc-300 mb-1.5">Fireflies Transcript ID (<code class="text-zinc-400">meetingId</code>)</label>
+          <input id="live-meeting-id" type="text" value="ff_transcript_98a72b1c" placeholder="e.g. 01J9X8K2M4N6P8Q0R2S4" class="w-full px-3 py-2 rounded-xl bg-surface-950 border border-zinc-700 text-xs font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-[#ff6d5a]" />
+        </div>
+
+        <div>
+          <span class="block text-[11px] font-medium text-zinc-400 mb-1.5">Request Body Preview</span>
+          <pre id="live-request-preview" class="p-3 rounded-xl bg-surface-950 border border-zinc-800 text-[11px] font-mono text-sky-300">{
+  "meetingId": "ff_transcript_98a72b1c"
+}</pre>
+        </div>
+
+        <!-- Live HTTP Response Box -->
+        <div id="live-response-box" class="hidden space-y-1.5 pt-2 border-t border-zinc-800">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-medium text-zinc-300">HTTP Response</span>
+            <span id="live-status-badge" class="px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold bg-emerald-500/20 text-emerald-300">200 OK</span>
+          </div>
+          <pre id="live-response-body" class="p-3 rounded-xl bg-surface-950 border border-zinc-800 text-[11px] font-mono text-zinc-300 overflow-x-auto max-h-44"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- CENTER PANEL: n8n Workflow Execution Visualizer (4 cols) -->
+    <section class="lg:col-span-4 bg-surface-900 border border-zinc-800/90 rounded-2xl overflow-hidden flex flex-col shadow-xl">
+      <div class="px-4 py-3.5 border-b border-zinc-800/80 flex items-center justify-between bg-surface-850/60">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-[#ff6d5a]"></span>
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-zinc-200">2. Workflow Execution Canvas</h2>
+        </div>
+        <span id="exec-timer" class="text-[11px] font-mono text-zinc-400 bg-zinc-800/80 px-2 py-0.5 rounded-md">Idle</span>
+      </div>
+
+      <!-- Visual Node Graph -->
+      <div class="n8n-canvas p-4 sm:p-5 flex flex-col items-center relative">
+
+        <!-- NODE 1: Webhook -->
+        <div id="node-webhook" onclick="inspectNode('webhook')" class="w-full max-w-sm p-3 rounded-xl bg-surface-850/95 border border-zinc-700/90 hover:border-zinc-500 cursor-pointer transition-all relative z-10">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 16.98h-5.99c-1.1 0-1.95.94-2.48 1.9A4 4 0 0 1 2 17c.01-.7.2-1.4.57-2"/>
+                  <path d="m6 17 3.13-5.78c.53-.97.1-2.18-.5-3.1a4 4 0 1 1 6.89-4.06"/>
+                  <path d="m12 6 3.13 5.73C15.66 12.7 16.9 13 18 13a4 4 0 0 1 0 8"/>
+                </svg>
+              </div>
+              <div>
+                <div class="text-xs font-semibold text-white">Webhook</div>
+                <div class="text-[11px] font-mono text-zinc-400">POST /meeting-processed</div>
+              </div>
+            </div>
+            <span id="status-webhook" class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-zinc-800 text-zinc-400">Pending</span>
+          </div>
+        </div>
+
+        <!-- Connector 1 -> 2 -->
+        <svg class="w-6 h-6 text-zinc-600 my-0.5" viewBox="0 0 24 24">
+          <line id="conn-1-2" x1="12" y1="0" x2="12" y2="24" stroke="currentColor" stroke-width="2" />
+        </svg>
+
+        <!-- NODE 2: Get Meeting Content -->
+        <div id="node-fireflies" onclick="inspectNode('fireflies')" class="w-full max-w-sm p-3 rounded-xl bg-surface-850/95 border border-zinc-700/90 hover:border-zinc-500 cursor-pointer transition-all relative z-10">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-sky-500/15 border border-sky-500/30 flex items-center justify-center text-sky-400 shrink-0">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="2" y1="12" x2="22" y2="12"/>
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                </svg>
+              </div>
+              <div>
+                <div class="text-xs font-semibold text-white">Get Meeting Content</div>
+                <div class="text-[11px] font-mono text-zinc-400">api.fireflies.ai/graphql</div>
+              </div>
+            </div>
+            <span id="status-fireflies" class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-zinc-800 text-zinc-400">Pending</span>
+          </div>
+        </div>
+
+        <!-- Connector 2 -> 3 -->
+        <svg class="w-6 h-6 text-zinc-600 my-0.5" viewBox="0 0 24 24">
+          <line id="conn-2-3" x1="12" y1="0" x2="12" y2="24" stroke="currentColor" stroke-width="2" />
+        </svg>
+
+        <!-- NODE 3: AI Agent + LLM Sub-node -->
+        <div id="node-agent" onclick="inspectNode('agent')" class="w-full max-w-sm p-3.5 rounded-xl bg-surface-850/95 border border-zinc-700/90 hover:border-zinc-500 cursor-pointer transition-all relative z-10">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 8V4H8"/>
+                  <rect width="16" height="12" x="4" y="8" rx="2"/>
+                  <path d="M2 14h2"/>
+                  <path d="M20 14h2"/>
+                  <path d="M15 13v2"/>
+                  <path d="M9 13v2"/>
+                </svg>
+              </div>
+              <div>
+                <div class="text-xs font-semibold text-white">AI Agent</div>
+                <div class="text-[11px] text-zinc-400">Tools Agent &bull; Orchestrator</div>
+              </div>
+            </div>
+            <span id="status-agent" class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-zinc-800 text-zinc-400">Pending</span>
+          </div>
+
+          <!-- Attached Chat Model Pill -->
+          <div class="mt-2.5 pt-2 border-t border-zinc-800/90 flex items-center justify-between text-[11px]">
+            <span class="inline-flex items-center gap-1.5 text-zinc-400">
+              <span class="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+              OpenAI Chat Model
+            </span>
+            <span class="font-mono text-zinc-300 bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">gpt-4o-mini</span>
+          </div>
+        </div>
+
+        <!-- Branching SVG Connector to 3 Tools -->
+        <svg class="w-full max-w-sm h-7 text-zinc-600" viewBox="0 0 300 28" fill="none">
+          <path id="conn-branch-left" d="M150 0 V12 H50 V28" stroke="currentColor" stroke-width="2" />
+          <path id="conn-branch-mid" d="M150 0 V28" stroke="currentColor" stroke-width="2" />
+          <path id="conn-branch-right" d="M150 0 V12 H250 V28" stroke="currentColor" stroke-width="2" />
+        </svg>
+
+        <!-- NODE 4: Branching Tool Nodes (3-column grid) -->
+        <div class="w-full max-w-sm grid grid-cols-3 gap-2">
+          <!-- Tool 1: Airtable -->
+          <div id="node-airtable" onclick="inspectNode('airtable')" class="p-2.5 rounded-xl bg-surface-850/95 border border-zinc-700/90 hover:border-zinc-500 cursor-pointer transition-all flex flex-col items-center text-center">
+            <div class="w-7 h-7 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-1.5">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <path d="M3 9h18"/>
+                <path d="M9 21V9"/>
+              </svg>
+            </div>
+            <div class="text-[11px] font-semibold text-white leading-tight">Create Tasks</div>
+            <div class="text-[10px] text-zinc-400 mt-0.5">Airtable</div>
+            <span id="status-airtable" class="mt-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-zinc-800 text-zinc-400">Pending</span>
+          </div>
+
+          <!-- Tool 2: Gmail -->
+          <div id="node-gmail" onclick="inspectNode('gmail')" class="p-2.5 rounded-xl bg-surface-850/95 border border-zinc-700/90 hover:border-zinc-500 cursor-pointer transition-all flex flex-col items-center text-center">
+            <div class="w-7 h-7 rounded-lg bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 mb-1.5">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect width="20" height="16" x="2" y="4" rx="2"/>
+                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+              </svg>
+            </div>
+            <div class="text-[11px] font-semibold text-white leading-tight">Notify Client About Tasks</div>
+            <div class="text-[10px] text-zinc-400 mt-0.5">Gmail</div>
+            <span id="status-gmail" class="mt-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-zinc-800 text-zinc-400">Pending</span>
+          </div>
+
+          <!-- Tool 3: Google Calendar -->
+          <div id="node-calendar" onclick="inspectNode('calendar')" class="p-2.5 rounded-xl bg-surface-850/95 border border-zinc-700/90 hover:border-zinc-500 cursor-pointer transition-all flex flex-col items-center text-center">
+            <div class="w-7 h-7 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 mb-1.5">
+              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect width="18" height="18" x="3" y="4" rx="2" ry="2"/>
+                <line x1="16" y1="2" x2="16" y2="6"/>
+                <line x1="8" y1="2" x2="8" y2="6"/>
+                <line x1="3" y1="10" x2="21" y2="10"/>
+              </svg>
+            </div>
+            <div class="text-[11px] font-semibold text-white leading-tight">Create Event</div>
+            <div class="text-[10px] text-zinc-400 mt-0.5">Calendar</div>
+            <span id="status-calendar" class="mt-1.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-zinc-800 text-zinc-400">Pending</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Execution Log & Node Inspector -->
+      <div class="p-4 border-t border-zinc-800/80 bg-surface-950/70 space-y-2">
+        <div class="flex items-center justify-between">
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">Execution Log Stream</span>
+          <span class="text-[10px] text-zinc-500">Click any node to inspect</span>
+        </div>
+        <div id="execution-logs" class="h-32 overflow-y-auto rounded-xl bg-surface-950 border border-zinc-800/90 p-2.5 font-mono text-[11px] space-y-1.5 text-zinc-400">
+          <div class="text-zinc-500">Ready. Click "Run Demo Workflow" to simulate execution...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RIGHT PANEL: Live Output Results (4 cols) -->
+    <section class="lg:col-span-4 bg-surface-900 border border-zinc-800/90 rounded-2xl overflow-hidden flex flex-col shadow-xl">
+      <div class="px-4 py-3.5 border-b border-zinc-800/80 flex items-center justify-between bg-surface-850/60">
+        <div class="flex items-center gap-2">
+          <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-zinc-200">3. Live Output Results</h2>
+        </div>
+        <span id="outputs-count" class="text-[11px] font-mono text-zinc-400 bg-zinc-800/80 px-2 py-0.5 rounded-md">0 Artifacts</span>
+      </div>
+
+      <!-- Filter Tabs for Generated Artifacts -->
+      <div id="output-filter-bar" class="hidden px-4 pt-3 flex items-center gap-1.5 border-b border-zinc-800/60 pb-2.5 overflow-x-auto">
+        <button type="button" onclick="filterOutputs('all')" id="tab-out-all" class="out-tab px-2.5 py-1 rounded-lg text-[11px] font-medium bg-zinc-800 text-white">All Outputs</button>
+        <button type="button" onclick="filterOutputs('airtable')" id="tab-out-airtable" class="out-tab px-2.5 py-1 rounded-lg text-[11px] font-medium text-zinc-400 hover:text-zinc-200">Airtable</button>
+        <button type="button" onclick="filterOutputs('gmail')" id="tab-out-gmail" class="out-tab px-2.5 py-1 rounded-lg text-[11px] font-medium text-zinc-400 hover:text-zinc-200">Gmail</button>
+        <button type="button" onclick="filterOutputs('calendar')" id="tab-out-calendar" class="out-tab px-2.5 py-1 rounded-lg text-[11px] font-medium text-zinc-400 hover:text-zinc-200">Calendar</button>
+      </div>
+
+      <div class="p-4 space-y-4">
+        <!-- Empty Placeholder State -->
+        <div id="outputs-empty" class="py-12 px-4 text-center border border-dashed border-zinc-800 rounded-2xl bg-surface-950/40">
+          <div class="w-10 h-10 rounded-xl bg-zinc-800/80 text-zinc-400 flex items-center justify-center mx-auto mb-3">
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+          </div>
+          <p class="text-xs font-medium text-zinc-300">No Generated Artifacts Yet</p>
+          <p class="text-[11px] text-zinc-500 mt-1 max-w-xs mx-auto leading-relaxed">
+            Run the workflow to watch Airtable tasks, the client summary email, and Google Calendar events appear here in real time.
+          </p>
+        </div>
+
+        <!-- ARTIFACT 1: Airtable Tasks Table -->
+        <div id="output-airtable" class="hidden space-y-2 animate-artifact">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+              <h3 class="text-xs font-semibold text-zinc-200">Airtable &mdash; Created Tasks</h3>
+            </div>
+            <span id="airtable-row-badge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">0 rows</span>
+          </div>
+          <div class="overflow-x-auto rounded-xl border border-zinc-800 bg-surface-950">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="border-b border-zinc-800 bg-surface-850/70 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                  <th class="py-2 px-3">Name</th>
+                  <th class="py-2 px-3">Notes / Owner</th>
+                  <th class="py-2 px-3 whitespace-nowrap">Due Date</th>
+                </tr>
+              </thead>
+              <tbody id="airtable-tbody" class="divide-y divide-zinc-800/70 text-xs text-zinc-200">
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- ARTIFACT 2: Gmail Sent Email Preview -->
+        <div id="output-gmail" class="hidden space-y-2 animate-artifact">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-rose-400"></span>
+              <h3 class="text-xs font-semibold text-zinc-200">Gmail &mdash; Sent Client Summary</h3>
+            </div>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Sent</span>
+          </div>
+          <div class="p-3.5 rounded-xl border border-zinc-800 bg-surface-950 space-y-2.5 text-xs">
+            <div class="space-y-1 pb-2 border-b border-zinc-800/80 text-[11px]">
+              <div class="flex gap-2">
+                <span class="text-zinc-500 w-12 shrink-0">To:</span>
+                <span id="gmail-to" class="font-mono text-zinc-200 truncate"></span>
+              </div>
+              <div class="flex gap-2">
+                <span class="text-zinc-500 w-12 shrink-0">Subject:</span>
+                <span id="gmail-subject" class="font-medium text-white"></span>
+              </div>
+            </div>
+            <div id="gmail-body" class="text-[11px] text-zinc-300 whitespace-pre-line leading-relaxed font-sans"></div>
+          </div>
+        </div>
+
+        <!-- ARTIFACT 3: Google Calendar Event Card -->
+        <div id="output-calendar" class="hidden space-y-2 animate-artifact">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-blue-400"></span>
+              <h3 class="text-xs font-semibold text-zinc-200">Google Calendar &mdash; Follow-up</h3>
+            </div>
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30">primary</span>
+          </div>
+          <div id="calendar-card-body" class="p-3.5 rounded-xl border border-zinc-800 bg-surface-950">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <!-- AI Agent Final Summary Box -->
+        <div id="output-summary" class="hidden p-3 rounded-xl bg-purple-500/10 border border-purple-500/30 text-xs text-purple-100 space-y-1 animate-artifact">
+          <div class="text-[11px] font-semibold text-purple-300 flex items-center gap-1.5">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+            </svg>
+            AI Agent Execution Summary
+          </div>
+          <p id="agent-final-text" class="text-[11px] text-zinc-300 leading-relaxed"></p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // =========================================================================
+    // 1. SAMPLE MEETING PRESETS & APPLICATION STATE
+    // =========================================================================
+    const TODAY_ISO = new Date().toISOString().split('T')[0];
+
+    const PRESETS = {
+      website: {
+        title: "Q4 Website Redesign Kickoff",
+        date: TODAY_ISO,
+        clientEmail: "sarah.chen@acmecorp.io",
+        participants: ["alex@studio.dev", "sarah.chen@acmecorp.io", "marcus@studio.dev"],
+        overview: "Reviewed homepage wireframes, brand palette, and CMS migration timeline. Agreed to schedule a follow-up design review on 2026-12-02 from 14:00 to 14:30.",
+        action_items: [
+          "Alex to deliver interactive homepage wireframes by 2026-11-29",
+          "Sarah to share updated SVG brand guidelines and fonts by 2026-12-01",
+          "Marcus to configure staging environment on Vercel"
+        ]
+      },
+      mobile: {
+        title: "Mobile App Sprint 14 Sync",
+        date: TODAY_ISO,
+        clientEmail: "david.park@fintechflow.com",
+        participants: ["priya@studio.dev", "david.park@fintechflow.com"],
+        overview: "Demoed biometric login and push notification preferences. Approved build for TestFlight beta release. No follow-up meeting needed until next sprint.",
+        action_items: [
+          "Priya to publish iOS build 2.4.1 to TestFlight by 2026-11-27",
+          "David to verify Stripe webhook keys in sandbox"
+        ]
+      },
+      onboarding: {
+        title: "Client Onboarding & CRM Kickoff",
+        date: TODAY_ISO,
+        clientEmail: "elena.rostova@nordicretail.co",
+        participants: ["ops@studio.dev", "elena.rostova@nordicretail.co"],
+        overview: "Aligned on HubSpot-to-Airtable data sync requirements and API permissions. Scheduled a technical kickoff follow-up on 2026-12-04 from 16:00 to 16:45.",
+        action_items: [
+          "Elena to grant read/write API access to HubSpot sandbox",
+          "Liam to map custom contact properties in Airtable",
+          "Elena to share historical CSV export for migration testing"
+        ]
+      }
+    };
+
+    const SANITIZED_N8N_WORKFLOW = {
+      name: "AI Agent for Project Management",
+      nodes: [
+        { name: "Webhook", type: "n8n-nodes-base.webhook", parameters: { httpMethod: "POST", path: "meeting-processed" } },
+        { name: "Get Meeting Content", type: "n8n-nodes-base.httpRequest", parameters: { method: "POST", url: "https://api.fireflies.ai/graphql" } },
+        { name: "AI Agent", type: "@n8n/n8n-nodes-langchain.agent", parameters: { systemMessage: "Create Airtable tasks (+7d default due date), send ONE Gmail client summary, and schedule Google Calendar event if follow-up mentioned." } },
+        { name: "OpenAI Chat Model", type: "@n8n/n8n-nodes-langchain.lmChatOpenAi", parameters: { model: "gpt-4o-mini", temperature: 0.2 } },
+        { name: "Create Tasks", type: "n8n-nodes-base.airtableTool", parameters: { operation: "create", columns: ["Name", "Notes", "Due Date"] } },
+        { name: "Notify Client About Tasks", type: "n8n-nodes-base.gmailTool", parameters: { sendTo: "client_email", subject: "subject", message: "message" } },
+        { name: "Create Event", type: "n8n-nodes-base.googleCalendarTool", parameters: { calendar: "primary", start: "start_time", end: "end_time" } }
+      ]
+    };
+
+    let currentMode = 'simulation'; // 'simulation' | 'live'
+    let isRunning = false;
+    let activeTimers = [];
+    let nodeInspectData = {};
+    let activeOutputFilter = 'all';
+
+    // =========================================================================
+    // 2. INITIALIZATION & FORM SYNC
+    // =========================================================================
+    window.addEventListener('DOMContentLoaded', () => {
+      loadPreset('website');
+      document.getElementById('modal-workflow-json').textContent = JSON.stringify(SANITIZED_N8N_WORKFLOW, null, 2);
+      document.getElementById('live-meeting-id').addEventListener('input', (e) => {
+        const val = e.target.value.trim() || 'ff_transcript_98a72b1c';
+        document.getElementById('live-request-preview').textContent = JSON.stringify({ meetingId: val }, null, 2);
+      });
+    });
+
+    function loadPreset(key) {
+      const data = PRESETS[key];
+      if (!data) return;
+
+      // Update preset button active styles
+      document.querySelectorAll('.preset-btn').forEach(btn => {
+        btn.classList.remove('border-[#ff6d5a]/60', 'bg-[#ff6d5a]/10');
+        btn.classList.add('border-zinc-800', 'bg-surface-850');
+      });
+      const activeBtn = document.getElementById(`preset-btn-${key}`);
+      if (activeBtn) {
+        activeBtn.classList.remove('border-zinc-800', 'bg-surface-850');
+        activeBtn.classList.add('border-[#ff6d5a]/60', 'bg-[#ff6d5a]/10');
+      }
+
+      document.getElementById('input-title').value = data.title;
+      document.getElementById('input-client-email').value = data.clientEmail;
+      document.getElementById('input-overview').value = data.overview;
+      document.getElementById('input-actions').value = data.action_items.join('\n');
+
+      syncFormToJson();
+      resetDemo(true);
+    }
+
+    function getCurrentTranscriptPayload() {
+      const title = document.getElementById('input-title').value.trim() || 'Untitled Meeting';
+      const clientEmail = document.getElementById('input-client-email').value.trim() || 'client@example.com';
+      const overview = document.getElementById('input-overview').value.trim();
+      const actionLines = document.getElementById('input-actions').value
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean);
+
+      return {
+        data: {
+          transcript: {
+            title,
+            date: TODAY_ISO,
+            participants: ["pm@agency.com", clientEmail],
+            summary: {
+              overview,
+              action_items: actionLines
+            }
+          }
+        }
+      };
+    }
+
+    function syncFormToJson() {
+      const payload = getCurrentTranscriptPayload();
+      document.getElementById('raw-json-preview').textContent = JSON.stringify(payload, null, 2);
+    }
+
+    // =========================================================================
+    // 3. MODE SWITCHING (SIMULATION VS LIVE WEBHOOK)
+    // =========================================================================
+    function setMode(mode) {
+      if (isRunning) return;
+      currentMode = mode;
+
+      const simBtn = document.getElementById('btn-mode-sim');
+      const liveBtn = document.getElementById('btn-mode-live');
+      const simInput = document.getElementById('sim-input-container');
+      const liveInput = document.getElementById('live-input-container');
+      const runLabel = document.getElementById('run-label');
+      const leftTitle = document.getElementById('left-panel-title');
+      const leftBadge = document.getElementById('left-panel-badge');
+
+      if (mode === 'simulation') {
+        simBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 bg-zinc-800 text-white shadow-sm';
+        liveBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200';
+        simInput.classList.remove('hidden');
+        liveInput.classList.add('hidden');
+        runLabel.textContent = 'Run Demo Workflow';
+        leftTitle.textContent = '1. Incoming Meeting Payload';
+        leftBadge.textContent = 'Fireflies GraphQL';
+      } else {
+        liveBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 bg-zinc-800 text-white shadow-sm';
+        simBtn.className = 'px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 text-zinc-400 hover:text-zinc-200';
+        liveInput.classList.remove('hidden');
+        simInput.classList.add('hidden');
+        runLabel.textContent = 'Trigger Live Webhook';
+        leftTitle.textContent = '1. Live Webhook Trigger';
+        leftBadge.textContent = 'HTTP POST';
+      }
+
+      resetDemo(true);
+    }
+
+    // =========================================================================
+    // 4. INTELLIGENT TRANSCRIPT PARSER (SIMULATES GPT-4o-mini AGENT)
+    // =========================================================================
+    function parseTranscriptWithAgent(transcript) {
+      const baseDate = new Date();
+      const defaultDue = new Date(baseDate.getTime() + 7 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split('T')[0]; // +7 days fallback per system prompt
+
+      // 1. Parse action items into Airtable task objects
+      const tasks = transcript.summary.action_items.map((raw) => {
+        // Extract YYYY-MM-DD date if present
+        const dateMatch = raw.match(/(\d{4}-\d{2}-\d{2})/);
+        const dueDate = dateMatch ? dateMatch[1] : defaultDue;
+
+        // Clean date phrase from title
+        let cleaned = raw.replace(/\s*by\s*\d{4}-\d{2}-\d{2}/i, '').trim();
+
+        // Extract owner ("Alex to deliver..." -> Owner: Alex, Task: Deliver...)
+        let owner = 'Team';
+        let taskName = cleaned;
+        const ownerMatch = cleaned.match(/^([A-Z][a-zA-Z]+)\s+to\s+(.+)$/);
+        if (ownerMatch) {
+          owner = ownerMatch[1];
+          taskName = ownerMatch[2].charAt(0).toUpperCase() + ownerMatch[2].slice(1);
+        }
+
+        return {
+          name: taskName,
+          notes: `Owner: ${owner} — ${raw}`,
+          owner,
+          dueDate
+        };
+      });
+
+      // 2. Detect follow-up meeting in overview
+      const overview = transcript.summary.overview || '';
+      const hasFollowUp = /follow-up|follow up|schedule|review on/i.test(overview) && !/no follow-up/i.test(overview);
+      let calendarEvent = null;
+
+      if (hasFollowUp) {
+        const followDateMatch = overview.match(/(\d{4}-\d{2}-\d{2})/);
+        const timeMatch = overview.match(/(\d{1,2}:\d{2})\s*to\s*(\d{1,2}:\d{2})/);
+        const eventDate = followDateMatch ? followDateMatch[1] : '2026-12-02';
+        const startTime = timeMatch ? timeMatch[1].padStart(5, '0') : '14:00';
+        const endTime = timeMatch ? timeMatch[2].padStart(5, '0') : '14:30';
+
+        calendarEvent = {
+          summary: `Follow-up: ${transcript.title}`,
+          start: `${eventDate}T${startTime}:00Z`,
+          end: `${eventDate}T${endTime}:00Z`,
+          displayDate: `${eventDate} • ${startTime} – ${endTime} UTC`,
+          calendar: 'primary'
+        };
+      }
+
+      // 3. Build Client Email Summary
+      const clientEmail = transcript.participants.find(p => !p.includes('pm@') && !p.includes('studio.dev')) || transcript.participants[0];
+      const taskBulletList = tasks
+        .map(t => `• ${t.name} (Owner: ${t.owner}, Due: ${t.dueDate})`)
+        .join('\n');
+
+      const followUpLine = calendarEvent
+        ? `\n\nNext Steps:\nWe have scheduled our follow-up session for ${calendarEvent.displayDate}.`
+        : '';
+
+      const email = {
+        to: clientEmail,
+        subject: `Action Items & Summary: ${transcript.title}`,
+        body: `Hi there,\n\nThank you for joining today's "${transcript.title}" session. Here is a summary of our action items and owners:\n\n${taskBulletList}${followUpLine}\n\nBest regards,\nAI Project Manager`
+      };
+
+      return { tasks, email, calendarEvent };
+    }
+
+    // =========================================================================
+    // 5. WORKFLOW EXECUTION ENGINE (SIMULATION & LIVE MODES)
+    // =========================================================================
+    function handleRunWorkflow() {
+      if (isRunning) return;
+      if (currentMode === 'simulation') {
+        runSimulation();
+      } else {
+        runLiveWebhook();
+      }
+    }
+
+    function setNodeState(nodeKey, state, statusText) {
+      const nodeEl = document.getElementById(`node-${nodeKey}`);
+      const badgeEl = document.getElementById(`status-${nodeKey}`);
+      if (!nodeEl || !badgeEl) return;
+
+      nodeEl.classList.remove('node-running', 'node-success', 'node-error');
+      badgeEl.className = 'px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors';
+
+      if (state === 'running') {
+        nodeEl.classList.add('node-running');
+        badgeEl.classList.add('bg-[#ff6d5a]/20', 'text-[#ff6d5a]');
+      } else if (state === 'success') {
+        nodeEl.classList.add('node-success');
+        badgeEl.classList.add('bg-emerald-500/20', 'text-emerald-300');
+      } else if (state === 'skipped') {
+        badgeEl.classList.add('bg-zinc-800', 'text-zinc-400');
+      } else if (state === 'error') {
+        nodeEl.classList.add('node-error');
+        badgeEl.classList.add('bg-rose-500/20', 'text-rose-300');
+      } else {
+        badgeEl.classList.add('bg-zinc-800', 'text-zinc-400');
+      }
+
+      badgeEl.textContent = statusText;
+    }
+
+    function setConnectorState(connId, state) {
+      const el = document.getElementById(connId);
+      if (!el) return;
+      el.classList.remove('connector-active', 'connector-done');
+      if (state === 'active') el.classList.add('connector-active');
+      if (state === 'done') el.classList.add('connector-done');
+    }
+
+    function appendLog(message, type = 'info') {
+      const logBox = document.getElementById('execution-logs');
+      const now = new Date().toTimeString().split(' ')[0];
+      const line = document.createElement('div');
+
+      let colorClass = 'text-zinc-300';
+      if (type === 'accent') colorClass = 'text-[#ff6d5a]';
+      if (type === 'success') colorClass = 'text-emerald-400';
+      if (type === 'warn') colorClass = 'text-amber-400';
+      if (type === 'error') colorClass = 'text-rose-400';
+
+      line.className = `${colorClass} leading-relaxed`;
+      line.innerHTML = `<span class="text-zinc-600">[${now}]</span> ${message}`;
+      logBox.appendChild(line);
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    function runSimulation() {
+      resetDemo(true);
+      isRunning = true;
+      updateRunButtonState(true);
+
+      const payload = getCurrentTranscriptPayload();
+      const transcript = payload.data.transcript;
+      const agentResults = parseTranscriptWithAgent(transcript);
+
+      const startTime = performance.now();
+      const timerInterval = setInterval(() => {
+        const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+        document.getElementById('exec-timer').textContent = `${elapsed}s`;
+      }, 100);
+      activeTimers.push(timerInterval);
+
+      document.getElementById('execution-logs').innerHTML = '';
+      appendLog('Starting workflow execution ("AI Agent for Project Management")...', 'accent');
+
+      // Step 1: Webhook (0ms -> 550ms)
+      setNodeState('webhook', 'running', 'Running');
+      appendLog('Webhook triggered: POST /webhook/meeting-processed');
+      nodeInspectData.webhook = { headers: { 'content-type': 'application/json' }, body: { meetingId: 'ff_sim_2026_11' } };
+
+      const t1 = setTimeout(() => {
+        setNodeState('webhook', 'success', '200 OK');
+        setConnectorState('conn-1-2', 'active');
+        appendLog('Webhook received meetingId: "ff_sim_2026_11"', 'success');
+
+        // Step 2: Fireflies GraphQL (550ms -> 1400ms)
+        setNodeState('fireflies', 'running', 'Fetching');
+        appendLog('Querying Fireflies GraphQL API for transcript summary & action items...');
+      }, 550);
+
+      const t2 = setTimeout(() => {
+        setConnectorState('conn-1-2', 'done');
+        setNodeState('fireflies', 'success', 'Success');
+        setConnectorState('conn-2-3', 'active');
+        nodeInspectData.fireflies = payload;
+        appendLog(`Retrieved transcript "${transcript.title}" (${agentResults.tasks.length} action items)`, 'success');
+
+        // Step 3: AI Agent (1400ms -> 2500ms)
+        setNodeState('agent', 'running', 'Reasoning');
+        appendLog('AI Agent (gpt-4o-mini) analyzing action items, owners, and follow-ups...', 'accent');
+      }, 1400);
+
+      const t3 = setTimeout(() => {
+        setConnectorState('conn-2-3', 'done');
+        setConnectorState('conn-branch-left', 'active');
+        setConnectorState('conn-branch-mid', 'active');
+        setConnectorState('conn-branch-right', 'active');
+
+        nodeInspectData.agent = {
+          model: 'gpt-4o-mini',
+          extractedTasks: agentResults.tasks.length,
+          followUpDetected: Boolean(agentResults.calendarEvent)
+        };
+
+        appendLog('AI Agent invoking connected tools: Airtable, Gmail, Google Calendar...');
+
+        // Step 4a: Airtable Tool
+        setNodeState('airtable', 'running', 'Creating');
+      }, 2500);
+
+      const t4 = setTimeout(() => {
+        setConnectorState('conn-branch-left', 'done');
+        setNodeState('airtable', 'success', `${agentResults.tasks.length} Rows`);
+        nodeInspectData.airtable = agentResults.tasks;
+        renderAirtableOutput(agentResults.tasks);
+        appendLog(`Airtable: Created ${agentResults.tasks.length} task record(s).`, 'success');
+
+        // Step 4b: Gmail Tool
+        setNodeState('gmail', 'running', 'Sending');
+      }, 3150);
+
+      const t5 = setTimeout(() => {
+        setConnectorState('conn-branch-mid', 'done');
+        setNodeState('gmail', 'success', 'Sent');
+        nodeInspectData.gmail = agentResults.email;
+        renderGmailOutput(agentResults.email);
+        appendLog(`Gmail: Sent summary email to ${agentResults.email.to}`, 'success');
+
+        // Step 4c: Google Calendar Tool
+        setNodeState('calendar', 'running', 'Checking');
+      }, 3750);
+
+      const t6 = setTimeout(() => {
+        setConnectorState('conn-branch-right', 'done');
+        if (agentResults.calendarEvent) {
+          setNodeState('calendar', 'success', 'Scheduled');
+          nodeInspectData.calendar = agentResults.calendarEvent;
+          renderCalendarOutput(agentResults.calendarEvent);
+          appendLog(`Google Calendar: Scheduled "${agentResults.calendarEvent.summary}"`, 'success');
+        } else {
+          setNodeState('calendar', 'skipped', 'Skipped');
+          nodeInspectData.calendar = { status: 'Skipped — no follow-up meeting mentioned in transcript.' };
+          renderCalendarOutput(null);
+          appendLog('Google Calendar: No follow-up meeting mentioned; tool skipped.', 'warn');
+        }
+
+        // Complete AI Agent
+        setNodeState('agent', 'success', 'Completed');
+        renderAgentSummary(agentResults);
+        clearInterval(timerInterval);
+        isRunning = false;
+        updateRunButtonState(false);
+        appendLog('Workflow execution finished cleanly.', 'success');
+        showToast('Demo workflow completed! Inspect the generated artifacts on the right.', 'success');
+      }, 4350);
+
+      activeTimers.push(t1, t2, t3, t4, t5, t6);
+    }
+
+    // =========================================================================
+    // 6. REAL n8n WEBHOOK TRIGGER MODE
+    // =========================================================================
+    async function runLiveWebhook() {
+      const urlInput = document.getElementById('live-webhook-url').value.trim();
+      const meetingId = document.getElementById('live-meeting-id').value.trim();
+
+      if (!urlInput) {
+        showToast('Please enter your n8n Webhook URL before triggering.', 'error');
+        document.getElementById('live-webhook-url').focus();
+        return;
+      }
+
+      resetDemo(true);
+      isRunning = true;
+      updateRunButtonState(true);
+      document.getElementById('execution-logs').innerHTML = '';
+
+      setNodeState('webhook', 'running', 'POSTing');
+      appendLog(`Sending POST request to ${urlInput}...`, 'accent');
+
+      const startTime = performance.now();
+
+      try {
+        const response = await fetch(urlInput, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ meetingId: meetingId || 'test-meeting-id' })
+        });
+
+        const elapsed = ((performance.now() - startTime) / 1000).toFixed(2);
+        document.getElementById('exec-timer').textContent = `${elapsed}s`;
+
+        const textBody = await response.text();
+        let parsedBody = textBody;
+        try {
+          parsedBody = JSON.stringify(JSON.parse(textBody), null, 2);
+        } catch (_) {}
+
+        const respBox = document.getElementById('live-response-box');
+        const statusBadge = document.getElementById('live-status-badge');
+        const respBodyEl = document.getElementById('live-response-body');
+
+        respBox.classList.remove('hidden');
+        respBodyEl.textContent = parsedBody || '(Empty response body)';
+
+        if (response.ok) {
+          statusBadge.className = 'px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold bg-emerald-500/20 text-emerald-300';
+          statusBadge.textContent = `${response.status} ${response.statusText || 'OK'}`;
+          setNodeState('webhook', 'success', 'Triggered');
+          setConnectorState('conn-1-2', 'done');
+          setNodeState('fireflies', 'success', 'Queued');
+          setNodeState('agent', 'success', 'Running in n8n');
+          appendLog(`Webhook accepted (${response.status}) in ${elapsed}s. Check your n8n Executions tab!`, 'success');
+          showToast(`Webhook triggered (${response.status} OK)! Check your n8n execution log.`, 'success');
+        } else {
+          statusBadge.className = 'px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold bg-rose-500/20 text-rose-300';
+          statusBadge.textContent = `${response.status} Error`;
+          setNodeState('webhook', 'error', `${response.status}`);
+          appendLog(`Webhook returned HTTP ${response.status}: ${textBody}`, 'error');
+          showToast(`n8n returned HTTP ${response.status}. Ensure workflow is active or listening.`, 'error');
+        }
+      } catch (err) {
+        setNodeState('webhook', 'error', 'Failed');
+        appendLog(`Network/CORS error: ${err.message}. Ensure n8n allows CORS or test from localhost.`, 'error');
+        showToast('Could not reach webhook URL (check URL or browser CORS settings).', 'error');
+      } finally {
+        isRunning = false;
+        updateRunButtonState(false);
+      }
+    }
+
+    // =========================================================================
+    // 7. RENDER ARTIFACTS IN RIGHT PANEL
+    // =========================================================================
+    function renderAirtableOutput(tasks) {
+      document.getElementById('outputs-empty').classList.add('hidden');
+      document.getElementById('output-filter-bar').classList.remove('hidden');
+      const container = document.getElementById('output-airtable');
+      container.dataset.generated = 'true';
+      if (activeOutputFilter === 'all' || activeOutputFilter === 'airtable') {
+        container.classList.remove('hidden');
+      }
+
+      document.getElementById('airtable-row-badge').textContent = `${tasks.length} ${tasks.length === 1 ? 'row' : 'rows'}`;
+      const tbody = document.getElementById('airtable-tbody');
+      tbody.innerHTML = tasks.map(t => `
+        <tr class="hover:bg-surface-850/50 transition-colors">
+          <td class="py-2.5 px-3 font-medium text-white">${escapeHtml(t.name)}</td>
+          <td class="py-2.5 px-3 text-zinc-400 text-[11px]">${escapeHtml(t.notes)}</td>
+          <td class="py-2.5 px-3 font-mono text-[11px] text-amber-300 whitespace-nowrap">${escapeHtml(t.dueDate)}</td>
+        </tr>
+      `).join('');
+
+      updateArtifactCounter();
+    }
+
+    function renderGmailOutput(email) {
+      document.getElementById('outputs-empty').classList.add('hidden');
+      document.getElementById('output-filter-bar').classList.remove('hidden');
+      const container = document.getElementById('output-gmail');
+      container.dataset.generated = 'true';
+      if (activeOutputFilter === 'all' || activeOutputFilter === 'gmail') {
+        container.classList.remove('hidden');
+      }
+
+      document.getElementById('gmail-to').textContent = email.to;
+      document.getElementById('gmail-subject').textContent = email.subject;
+      document.getElementById('gmail-body').textContent = email.body;
+
+      updateArtifactCounter();
+    }
+
+    function renderCalendarOutput(event) {
+      document.getElementById('outputs-empty').classList.add('hidden');
+      document.getElementById('output-filter-bar').classList.remove('hidden');
+      const container = document.getElementById('output-calendar');
+      const body = document.getElementById('calendar-card-body');
+      container.dataset.generated = 'true';
+      if (activeOutputFilter === 'all' || activeOutputFilter === 'calendar') {
+        container.classList.remove('hidden');
+      }
+
+      if (event) {
+        body.innerHTML = `
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="text-xs font-semibold text-white">${escapeHtml(event.summary)}</div>
+              <div class="text-[11px] text-blue-300 font-mono mt-1">${escapeHtml(event.displayDate)}</div>
+              <div class="text-[10px] text-zinc-500 font-mono mt-1">ISO: ${escapeHtml(event.start)} &rarr; ${escapeHtml(event.end)}</div>
+            </div>
+            <span class="px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 text-[10px] font-medium shrink-0">Confirmed</span>
+          </div>
+        `;
+      } else {
+        body.innerHTML = `
+          <div class="text-[11px] text-zinc-400 flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-zinc-600"></span>
+            No follow-up meeting mentioned in transcript. Tool skipped per system prompt.
+          </div>
+        `;
+      }
+
+      updateArtifactCounter();
+    }
+
+    function renderAgentSummary(results) {
+      const box = document.getElementById('output-summary');
+      const text = document.getElementById('agent-final-text');
+      box.classList.remove('hidden');
+
+      const calPart = results.calendarEvent
+        ? `scheduled "${results.calendarEvent.summary}" on Google Calendar`
+        : `skipped calendar scheduling since no follow-up was requested`;
+
+      text.textContent = `Created ${results.tasks.length} task(s) in Airtable, sent a consolidated summary email to ${results.email.to}, and ${calPart}.`;
+    }
+
+    function updateArtifactCounter() {
+      let count = 0;
+      if (document.getElementById('output-airtable').dataset.generated === 'true') count++;
+      if (document.getElementById('output-gmail').dataset.generated === 'true') count++;
+      if (document.getElementById('output-calendar').dataset.generated === 'true') count++;
+      document.getElementById('outputs-count').textContent = `${count} ${count === 1 ? 'Artifact' : 'Artifacts'}`;
+    }
+
+    function filterOutputs(tab) {
+      activeOutputFilter = tab;
+      document.querySelectorAll('.out-tab').forEach(btn => {
+        btn.className = 'out-tab px-2.5 py-1 rounded-lg text-[11px] font-medium text-zinc-400 hover:text-zinc-200';
+      });
+      const activeBtn = document.getElementById(`tab-out-${tab}`);
+      if (activeBtn) {
+        activeBtn.className = 'out-tab px-2.5 py-1 rounded-lg text-[11px] font-medium bg-zinc-800 text-white';
+      }
+
+      ['airtable', 'gmail', 'calendar'].forEach(key => {
+        const el = document.getElementById(`output-${key}`);
+        if (el.dataset.generated !== 'true') {
+          el.classList.add('hidden');
+          return;
+        }
+        if (tab === 'all' || tab === key) {
+          el.classList.remove('hidden');
+        } else {
+          el.classList.add('hidden');
+        }
+      });
+    }
+
+    // =========================================================================
+    // 8. UTILITIES (RESET, MODAL, NODE INSPECT, CLIPBOARD, TOAST)
+    // =========================================================================
+    function openWorkflowModal() {
+      document.getElementById('workflow-modal').classList.remove('hidden');
+    }
+
+    function closeWorkflowModal() {
+      document.getElementById('workflow-modal').classList.add('hidden');
+    }
+
+    function copyTextById(elementId, successMsg) {
+      const text = document.getElementById(elementId).textContent;
+      const tempArea = document.createElement('textarea');
+      tempArea.value = text;
+      document.body.appendChild(tempArea);
+      tempArea.select();
+      try {
+        document.execCommand('copy');
+        showToast(successMsg, 'success');
+      } catch (e) {
+        showToast('Unable to copy automatically.', 'error');
+      }
+      document.body.removeChild(tempArea);
+    }
+
+    function resetDemo(silent = false) {
+      activeTimers.forEach(id => clearTimeout(id));
+      activeTimers = [];
+      isRunning = false;
+      updateRunButtonState(false);
+
+      ['webhook', 'fireflies', 'agent', 'airtable', 'gmail', 'calendar'].forEach(key => {
+        setNodeState(key, 'pending', 'Pending');
+      });
+
+      ['conn-1-2', 'conn-2-3', 'conn-branch-left', 'conn-branch-mid', 'conn-branch-right'].forEach(id => {
+        setConnectorState(id, 'idle');
+      });
+
+      document.getElementById('exec-timer').textContent = 'Idle';
+      document.getElementById('outputs-empty').classList.remove('hidden');
+      document.getElementById('output-filter-bar').classList.add('hidden');
+      ['airtable', 'gmail', 'calendar'].forEach(key => {
+        const el = document.getElementById(`output-${key}`);
+        el.classList.add('hidden');
+        delete el.dataset.generated;
+      });
+      document.getElementById('output-summary').classList.add('hidden');
+      document.getElementById('live-response-box').classList.add('hidden');
+      document.getElementById('outputs-count').textContent = '0 Artifacts';
+      nodeInspectData = {};
+      filterOutputs('all');
+
+      document.getElementById('execution-logs').innerHTML =
+        '<div class="text-zinc-500">Ready. Click "' + (currentMode === 'simulation' ? 'Run Demo Workflow' : 'Trigger Live Webhook') + '" to start...</div>';
+
+      if (!silent) {
+        showToast('Demo reset to clean state.', 'info');
+      }
+    }
+
+    function inspectNode(nodeKey) {
+      const data = nodeInspectData[nodeKey];
+      if (!data) {
+        appendLog(`Node "${nodeKey}" has not executed yet.`, 'warn');
+        return;
+      }
+      appendLog(`Inspect [${nodeKey}]: ${JSON.stringify(data).slice(0, 140)}...`, 'accent');
+    }
+
+    function updateRunButtonState(running) {
+      const btn = document.getElementById('btn-run');
+      const label = document.getElementById('run-label');
+      if (running) {
+        btn.classList.add('opacity-75', 'cursor-not-allowed');
+        label.textContent = currentMode === 'simulation' ? 'Executing...' : 'Sending...';
+      } else {
+        btn.classList.remove('opacity-75', 'cursor-not-allowed');
+        label.textContent = currentMode === 'simulation' ? 'Run Demo Workflow' : 'Trigger Live Webhook';
+      }
+    }
+
+    function copyPayloadJson() {
+      const text = document.getElementById('raw-json-preview').textContent;
+      const tempArea = document.createElement('textarea');
+      tempArea.value = text;
+      document.body.appendChild(tempArea);
+      tempArea.select();
+      try {
+        document.execCommand('copy');
+        showToast('Mock Fireflies JSON copied to clipboard (ready to pin in n8n).', 'success');
+      } catch (e) {
+        showToast('Unable to copy JSON automatically.', 'error');
+      }
+      document.body.removeChild(tempArea);
+    }
+
+    let toastTimeout;
+    function showToast(message, type = 'success') {
+      const banner = document.getElementById('toast-banner');
+      const dot = document.getElementById('toast-dot');
+      const msg = document.getElementById('toast-message');
+
+      msg.textContent = message;
+      dot.className = 'w-2.5 h-2.5 rounded-full shrink-0 ' +
+        (type === 'error' ? 'bg-rose-400' : type === 'info' ? 'bg-sky-400' : 'bg-emerald-400');
+
+      banner.classList.remove('hidden');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        banner.classList.add('hidden');
+      }, 3600);
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>
